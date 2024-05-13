@@ -9,24 +9,40 @@ import (
 )
 
 func Auth() gin.HandlerFunc {
-	return gin.HandlerFunc(func(ctx *gin.Context) {
-		cookie, err := ctx.Cookie("session_token")
+	return gin.HandlerFunc(func(c *gin.Context) {
+		// session token ambil dari cookie dengan key "session_token"
+		cookie, err := c.Cookie("session_token")
+
+		// case jika tidak ada "session_token"
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			if c.GetHeader("Content-Type") == "application/json" {
+				// case jika "Content-Type" sesuai, status code = 401
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			} else {
+				// case jika "Content-Type" tidak sesuai, status code = 303
+				c.Redirect(http.StatusSeeOther, "/login")
+			}
+
+			c.Abort()
 			return
 		}
 
-		claims := &model.Claims{}
-		token, err := jwt.ParseWithClaims(cookie, claims, func(token *jwt.Token) (interface{}, error) {
+		// case jika ada "session_token" lalu ambil model Claims
+		tokenClaims := &model.Claims{}
+
+		// parse jwt
+		token, err := jwt.ParseWithClaims(cookie, tokenClaims, func(t *jwt.Token) (interface{}, error) {
 			return model.JwtKey, nil
 		})
 		if err != nil || !token.Valid {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			// case jika parse gagal, status code = 400
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unauthorized"})
+			c.Abort()
 			return
 		}
 
-		ctx.Set("email", claims.Email)
-		ctx.JSON(http.StatusOK, gin.H{"message": "success"})
-		ctx.Next()
+		// jika parse berhasil, set token dan call next middleware
+		c.Set("email", tokenClaims.Email)
+		c.Next()
 	})
 }
